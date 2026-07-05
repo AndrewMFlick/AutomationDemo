@@ -1,0 +1,20 @@
+﻿name: Local-Only Mechanical Task
+description: Runs entirely on Foundry Local - no external inference
+labels: [area:model, model:foundry-local, cost-optimization]
+body:
+  - type: input
+    id: source
+    attributes:
+      label: Source path in reference/HAP-NodeJS
+  - type: input
+    id: target
+    attributes:
+      label: Target Rust file
+  - type: textarea
+    id: constraints
+    attributes:
+      value: |
+        MODEL:   Foundry Local [qwen2.5-coder-7b or phi-4-mini]
+        RUNTIME: foundry service on developer machine
+        NETWORK: COPILOT_OFFLINE=true. No external calls permitted.
+        ACCEPTANCE: PR must include foundry model ID and hash in body.

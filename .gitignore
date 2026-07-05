@@ -1,0 +1,10 @@
+﻿# Rust build artifacts (also keeps them out of OneDrive sync noise)
+/target
+**/*.rs.bk
+
+# Reference tree - source-of-truth clone, do not commit
+/reference
+
+# OS junk
+.DS_Store
+Thumbs.db

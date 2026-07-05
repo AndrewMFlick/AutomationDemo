@@ -1,0 +1,31 @@
+﻿name: CI
+on: [push, pull_request]
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt, clippy }
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo install cargo-nextest --locked
+      - run: cargo nextest run --all
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+
+  local-review-attestation:
+    if: contains(github.event.pull_request.labels.*.name, 'security-review-required')
+    runs-on: [self-hosted, foundry-local]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify offline mode + local reviewer model
+        run: |
+          test "$COPILOT_OFFLINE" = "true" || { echo "Offline mode required"; exit 1; }
+          curl -sf http://localhost:5273/v1/models | jq -e '.data[] | select(.id=="hap-spec-reviewer-v1")'
+      - name: Adversarial review
+        env:
+          COPILOT_PROVIDER_BASE_URL: http://localhost:5273/v1
+          COPILOT_MODEL:            hap-spec-reviewer-v1
+          COPILOT_OFFLINE:          "true"
+        run: copilot review --pr ${{ github.event.pull_request.number }}

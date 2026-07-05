@@ -1,0 +1,14 @@
+﻿name: SRP Pairing + ChaCha20-Poly1305
+description: HAP spec section 5 Pair Setup + section 6 Pair Verify. BYTE-EXACT.
+labels: [area:crypto, area:pairing, model:opus, compliance, security-review-required]
+body:
+  - type: textarea
+    id: scope
+    attributes:
+      value: |
+        - SRP-6a with SHA-512, 3072-bit group.
+        - HKDF-SHA-512 session key derivation.
+        - ChaCha20-Poly1305 AEAD, 96-bit LE counter nonce.
+        - Curve25519 [X25519] + Ed25519 for Pair Verify.
+        - Persist LTPK/LTSK in AccessoryInfo store.
+        MODEL: Opus / strongest frontier. Byte-exact spec compliance.

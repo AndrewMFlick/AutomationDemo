@@ -1,0 +1,20 @@
+﻿{
+  "name": "hap-rs",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "postCreateCommand": "rustup component add clippy rustfmt && cargo install cargo-audit cargo-deny cargo-nextest && git clone https://github.com/homebridge/HAP-NodeJS reference/HAP-NodeJS",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "vadimcn.vscode-lldb"
+      ]
+    }
+  },
+  "forwardPorts": [51826]
+}

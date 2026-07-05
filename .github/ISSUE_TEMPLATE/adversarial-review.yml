@@ -1,0 +1,16 @@
+﻿name: Adversarial Spec Review [Foundry Local]
+description: Fine-tuned reviewer, air-gapped
+labels: [area:model, model:fine-tuned, compliance, security-review-required]
+body:
+  - type: input
+    id: pr
+    attributes:
+      label: PR number to review
+  - type: textarea
+    id: instructions
+    attributes:
+      value: |
+        Enforce every MUST/SHALL from the referenced HAP spec section.
+        MODEL: hap-spec-reviewer-v1 on Foundry Local.
+        RUNTIME: COPILOT_OFFLINE=true, self-hosted runner.
+        HAP spec MUST NOT leave the developer machine.

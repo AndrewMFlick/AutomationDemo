@@ -1,0 +1,8 @@
+﻿[package]
+name    = "light-bulb"
+version = "0.0.1"
+edition.workspace = true
+
+[[bin]]
+name = "light-bulb"
+path = "src/main.rs"
