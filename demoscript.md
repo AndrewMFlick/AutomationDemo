@@ -14,6 +14,7 @@
 - [Pre-demo checklist](#pre-demo-checklist)
 - [The four beats](#the-four-beats)
   - [Beat A — Cost story (Foundry Local)](#beat-a--cost-story-foundry-local)
+    - [Option 2 — Copilot App (BYOK)](#option-2--copilot-app-byok)
   - [Beat B — Model routing (Opus for crypto)](#beat-b--model-routing-opus-for-crypto)
   - [Beat C — Security story (air-gapped review)](#beat-c--security-story-air-gapped-review)
   - [Beat D — WSL runtime close (iPhone pairs)](#beat-d--wsl-runtime-close-iphone-pairs)
@@ -191,6 +192,25 @@ reliable regardless of model tool-use), run:
 .\beat-a-local-summary.ps1                       # summarizes head of Accessory.ts
 .\beat-a-local-summary.ps1 -File reference/HAP-NodeJS/src/lib/util/uuid.ts
 ```
+
+#### Option 2 — Copilot App (BYOK)
+
+If you want the same local-model story in the GitHub Copilot App instead of the CLI, this is now possible with BYOK / model providers. Use this only if you have already dry-run the app on the same machine — the app is visually nicer for the model-picker story, but it gives you fewer low-level knobs than the CLI.
+
+1. Open **Copilot App → Settings → Model Providers → Add provider**.
+2. Add an **OpenAI-compatible** provider with endpoint `http://localhost:5273/v1`.
+3. Leave the API key blank for local Foundry.
+4. Start a session and pick `qwen2.5-coder-1.5b-instruct-generic-gpu:4` from the model picker.
+
+Talk track:
+
+> "This is the same local model story, just in the Copilot App. The model picker now shows both Copilot-hosted models and my local Foundry model side by side. I can route mechanical work to the on-device model for zero token cost, then switch to frontier models when I need them."
+
+#### Copilot App caveats
+
+- Verify the app can hold the same prompt size on your hardware; the CLI-specific trimming and `--stream off` fix do not apply here.
+- Keep the GPU build, not the NPU build. The NPU's ~4,224-token window is still too small for the full agent harness.
+- If the app misbehaves on stage, fall back to `.\\beat-a-local-cli.ps1`, which is already proven on this box.
 
 ---
 
