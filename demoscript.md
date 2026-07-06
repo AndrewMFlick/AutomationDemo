@@ -512,6 +512,7 @@ Get-ChildItem *.ps1 | Unblock-File
 ### Environment variables (persistent, user scope)
 
 Use `setx` — it's the most portable way to set persistent env vars from PowerShell.
+For a quick toggle in the current shell, dot-source `.\switch-copilot-provider.ps1 -Mode Local` or `-Mode Cloud`.
 
 ```powershell
 setx COPILOT_PROVIDER_BASE_URL          "http://localhost:5273/v1"
