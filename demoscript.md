@@ -523,6 +523,7 @@ $env:COPILOT_PROVIDER_TIMEOUT_MS        = "120000"
 ### Foundry Local persistent settings
 
 ```powershell
+foundry model download qwen2.5-coder-1.5b-instruct-generic-gpu:4  # pull the DirectML GPU build (~1 GB)
 foundry service set --port 5273              # pin port so env vars don't drift
 foundry service set --autoload qwen2.5-coder-1.5b-instruct-generic-gpu:4  # load on service start
 foundry service set --model-ttl 0            # never auto-unload
