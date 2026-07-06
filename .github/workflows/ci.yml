@@ -20,6 +20,9 @@ jobs:
     env:
       LOCAL_BASE_URL: http://localhost:5273/v1
       LOCAL_MODEL:    qwen2.5-coder-1.5b-instruct-generic-gpu:4
+      # Apache-2.0 reference clone on THIS runner. It is gitignored (never
+      # committed / never leaves the box); the scan reads it locally.
+      HAP_REFERENCE_ROOT: C:\Users\anflick\OneDrive - Microsoft\Documents\GitHub\AutomationDemo\reference\HAP-NodeJS
     steps:
       - uses: actions/checkout@v4
       - name: Verify local reviewer model is loaded
@@ -31,21 +34,11 @@ jobs:
             exit 1
           }
           Write-Host "Local reviewer model available: $env:LOCAL_MODEL"
-      - name: Adversarial review (local, on-device)
+      - name: Internal security hardening scan (local, on-device)
         shell: pwsh
         run: |
-          $diff = git diff "origin/${{ github.event.pull_request.base.ref }}...HEAD"
-          if ([string]::IsNullOrWhiteSpace($diff)) { $diff = "(no diff)" }
-          if ($diff.Length -gt 6000) { $diff = $diff.Substring(0, 6000) }
-          $body = @{
-            model    = $env:LOCAL_MODEL
-            messages = @(
-              @{ role = "system"; content = "You are an adversarial security reviewer for a Rust port of Apple's HAP spec. Flag memory-safety, crypto, and spec-compliance risks in 3-5 concise bullets. No preamble." },
-              @{ role = "user";   content = "Review this diff:`n`n$diff" }
-            )
-            stream     = $false
-            max_tokens = 400
-            temperature = 0.2
-          } | ConvertTo-Json -Depth 6
-          $resp = Invoke-RestMethod "$env:LOCAL_BASE_URL/chat/completions" -Method Post -Body $body -ContentType 'application/json' -TimeoutSec 180
-          Write-Host $resp.choices[0].message.content
+          ./security-review-local.ps1 `
+            -BaseRef "origin/${{ github.event.pull_request.base.ref }}" `
+            -Model   $env:LOCAL_MODEL `
+            -BaseUrl $env:LOCAL_BASE_URL `
+            -FailOn  High

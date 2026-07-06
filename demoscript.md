@@ -1,6 +1,6 @@
 # HAP-rs Demo Script
 
-**Story:** Port `homebridge/HAP-NodeJS` (TypeScript) to Rust using GitHub Copilot + Foundry Local, showcasing what only Microsoft can do end-to-end. Route mechanical work to open-weight models on-device (cost story), frontier reasoning to Opus (routing story), adversarial spec review to an air-gapped fine-tuned model (security story), and close on WSL running the accessory paired to an iPhone.
+**Story:** Port `homebridge/HAP-NodeJS` (TypeScript) to Rust using GitHub Copilot + Foundry Local, showcasing what only Microsoft can do end-to-end. Route mechanical work to open-weight models on-device (cost story), frontier reasoning to Opus (routing story), a local security-hardening review grounded in the Apache-2.0 reference implementation (security story), and close on WSL running the accessory paired to an iPhone.
 
 **Runtime:** 5–7 minutes of stage time. Assumes all setup completed the day before.
 
@@ -251,7 +251,7 @@ Show the `.github/copilot-instructions.md` file briefly:
 - `model:foundry-local` -> Runs on Foundry Local. Mechanical work.
 - `model:codex`   -> TLV8 and well-patterned wire code.
 - `model:opus`    -> SRP, ChaCha20-Poly1305, X25519/Ed25519. Byte-exact.
-- `model:fine-tuned` -> Adversarial spec review, air-gapped, Foundry Local.
+- `model:fine-tuned` -> Local security-hardening review, grounded on the Apache-2.0 reference, air-gapped on Foundry Local.
 ```
 
 > "Repo-level instructions telling Copilot what to route where. This is the routing policy in code."
@@ -261,11 +261,15 @@ Show the `.github/copilot-instructions.md` file briefly:
 ### Beat C — Security story (air-gapped review)
 
 **Duration:** ~90 seconds  
-**What lands:** "The HAP spec never left this machine. And CI enforced it."
+**What lands:** "The reference and the code never left this machine. And CI enforced it."
 
 #### On-screen steps
 
 Open the PR that Copilot opened for the SRP work in Beat B (or a pre-baked one you prepared).
+
+> **Dry-run tip.** Before the demo you can run the exact same scan locally:
+> `pwsh .\security-review-local.ps1 -AllSecurity` (or `-Files crates/hap-crypto/src/lib.rs`).
+> CI calls this same script on the self-hosted runner.
 
 Add the `security-review-required` label:
 
@@ -273,23 +277,28 @@ Add the `security-review-required` label:
 gh pr edit <pr-number> --add-label security-review-required
 ```
 
-Switch to the Actions tab. Show the `local-review-attestation` job starting on your **self-hosted runner** (labeled `foundry-local`).
+Switch to the Actions tab. Show the `local-review-attestation` job starting on your **self-hosted runner** (labeled `foundry-local`). It runs `security-review-local.ps1`, which scans the PR's security-critical Rust against the **Apache-2.0 HAP-NodeJS reference** on this box and gates on High findings.
 
-Highlight two log lines from the CI job:
+Highlight the CI job log:
 
 ```
-Verify offline mode + local reviewer model
-  COPILOT_OFFLINE=true  ✓
-  hap-spec-reviewer-v1 available on http://localhost:5273/v1  ✓
+Verify local reviewer model is loaded
+  qwen2.5-coder-1.5b-instruct-generic-gpu:4 available  ✓
 
-Adversarial review
-  HAP §5.6.6.1: SRP salt must be 16 bytes.  Implementation: ✓
-  HAP §5.6.6.2: SRP-6a proof M1 = H(...).   Implementation: ✓
+Internal security hardening scan (local, on-device)
+  Grounding: HAP-NodeJS reference (Apache-2.0), read locally
+  Reviewing crates/hap-crypto/src/pairing.rs
+    grounded on: src/lib/util/hapCrypto.ts
+    [HIGH] pairing.rs: fixed nonce reused across frames (fix: derive a per-frame nonce)
+    [HIGH] pairing.rs: unwrap() on decrypt can panic on hostile input (fix: return HapError)
+    (24.1s, on-device, $0.00, 2 finding(s))
+  VERDICT: FAIL
+  GATE FAILED: findings at or above 'High'.
 ```
 
 #### Talk track
 
-> "Apple's HAP specification is under a Non-Commercial license. You legally can't send big chunks of it to a third-party inference endpoint. So the adversarial spec reviewer runs on Foundry Local — on my machine — with `COPILOT_OFFLINE=true`. And CI enforces that. This job is running on a **self-hosted runner** that I registered with the `foundry-local` label. It literally cannot execute on GitHub-hosted infrastructure. The Apple spec never left my box. The code never left my box. And the review still gated the merge. **No other AI dev platform can offer this shape today.** Not Cursor. Not Claude Code. Not Codex CLI standalone. Because the local runtime piece — Foundry Local — is a Microsoft asset that ships with Windows."
+> "Here's the security story. Apple's HAP spec is Non-Commercial licensed — you legally can't ship it to a third-party inference endpoint. So instead of pretending I trained a model on Apple's spec, I ground the review in the **Apache-2.0 reference implementation** — the canonical, openly-licensed encoding of the required behavior. The reviewer is a small open-weight model running on Foundry Local, on *this* machine. This job runs on a **self-hosted runner** labeled `foundry-local` — it literally cannot execute on GitHub-hosted infrastructure. The reference never leaves my box, the code never leaves my box, and the scan still gated the merge on a real crypto bug — a reused nonce. **No other AI dev platform offers this shape today.** Not Cursor. Not Claude Code. Not Codex CLI standalone. Because the local runtime — Foundry Local — is a Microsoft asset that ships with Windows."
 
 #### The regulated-customer transition
 
@@ -351,7 +360,7 @@ Three bullets for the recap email / stakeholder debrief:
 
 1. **Cost:** 60%+ of PRs on this port were driven by an open-weight coder model running on-device via Foundry Local — zero token cost, no external inference — reserving frontier-model spend for the ~30% of work (crypto + review) that actually needs it.
 
-2. **Security:** The adversarial HAP spec reviewer is a fine-tuned open-weight model, running fully air-gapped via Foundry Local + `COPILOT_OFFLINE=true`. Apple's spec and our source never left the developer's Copilot+ PC — and CI enforces it as a merge gate.
+2. **Security:** The security-hardening reviewer is an open-weight model running fully air-gapped via Foundry Local on a self-hosted runner, grounded in the Apache-2.0 HAP-NodeJS reference (not Apple's Non-Commercial spec). The reference and our source never left the developer's box — and CI enforces it as a merge gate.
 
 3. **Only Microsoft:** GitHub Issues → Copilot coding agent → BYOM model routing → Foundry Local on Windows/WSL → runtime on the same box. Cursor can't do it. Codex CLI can't do it. GitHub + Foundry Local can.
 
@@ -575,7 +584,7 @@ foundry service set --model-ttl 0            # never auto-unload
 | Boilerplate Rust translation | qwen2.5-coder-1.5b (GPU) | Foundry Local (GPU) | $0 |
 | TLV8 wire encoding | Codex | GitHub-hosted | ~$0.05/PR |
 | SRP + ChaCha20-Poly1305 crypto | Opus 4.8 | GitHub-hosted | ~$0.30/PR |
-| Adversarial HAP spec review | hap-spec-reviewer-v1 (fine-tuned) | Foundry Local (offline) | $0 |
+| Local security hardening review | qwen2.5-coder-1.5b (GPU) | Foundry Local (offline) | $0 |
 
 ---
 
