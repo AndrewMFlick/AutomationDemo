@@ -74,7 +74,15 @@ switch ($Mode) {
 
         Write-Host "Switched current session to the local Foundry provider." -ForegroundColor Cyan
         Show-CurrentProvider
-        Write-Host "Next: run copilot -p ... or .\beat-a-local-cli.ps1" -ForegroundColor Yellow
+        Write-Host "IMPORTANT: the env vars point the PROVIDER at Foundry Local, but the" -ForegroundColor Yellow
+        Write-Host "interactive picker still defaults to a hosted model. You MUST launch" -ForegroundColor Yellow
+        Write-Host "copilot WITH --model (and the harness-trim flags the local GPU needs):" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  copilot --model $LocalModel ``" -ForegroundColor Green
+        Write-Host "    --stream off --disable-builtin-mcps --no-custom-instructions ``" -ForegroundColor Green
+        Write-Host "    --available-tools=view --allow-all-tools" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "Or run the packaged Beat A: .\beat-a-local-cli.ps1" -ForegroundColor Yellow
     }
 
     'Cloud' {
