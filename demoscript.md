@@ -1,6 +1,6 @@
 # HAP-rs Demo Script
 
-**Story:** Port `homebridge/HAP-NodeJS` (TypeScript) to Rust using GitHub Copilot + Foundry Local, showcasing what only Microsoft can do end-to-end. Route mechanical work to open-weight models on-device (cost story), frontier reasoning to Opus (routing story), adversarial spec review to an air-gapped fine-tuned model (security story), and close on WSL running the accessory paired to an iPhone.
+**Story:** Port `homebridge/HAP-NodeJS` (TypeScript) to Rust using GitHub Copilot + Foundry Local, showcasing what only Microsoft can do end-to-end. Route mechanical work to open-weight models on-device (cost story), frontier reasoning to Opus (routing story), a local security-hardening review grounded in the Apache-2.0 reference implementation (security story), and close on WSL running the accessory paired to an iPhone.
 
 **Runtime:** 5–7 minutes of stage time. Assumes all setup completed the day before.
 
@@ -14,6 +14,7 @@
 - [Pre-demo checklist](#pre-demo-checklist)
 - [The four beats](#the-four-beats)
   - [Beat A — Cost story (Foundry Local)](#beat-a--cost-story-foundry-local)
+    - [Option 2 — Copilot App (BYOK)](#option-2--copilot-app-byok)
   - [Beat B — Model routing (Opus for crypto)](#beat-b--model-routing-opus-for-crypto)
   - [Beat C — Security story (air-gapped review)](#beat-c--security-story-air-gapped-review)
   - [Beat D — WSL runtime close (iPhone pairs)](#beat-d--wsl-runtime-close-iphone-pairs)
@@ -62,7 +63,7 @@ All 10 checks should be green. Common fixes if not:
 | Check | If red, do this |
 |---|---|
 | 1. Foundry service on :5273 | `cd C:\ ; foundry service restart` |
-| 2. Required models loaded | `foundry model load qwen2.5-coder-7b` |
+| 2. Required models loaded | `foundry model load qwen2.5-coder-1.5b-instruct-generic-gpu:4` |
 | 3. COPILOT_* env vars | Open a fresh PowerShell session |
 | 5. gh auth | `gh auth login` |
 | 9. Runner online | Run `03-register-runner.ps1` |
@@ -73,10 +74,10 @@ All 10 checks should be green. Common fixes if not:
 # 1. Foundry Local up and model loaded
 cd C:\
 foundry service status
-foundry model load qwen2.5-coder-7b
+foundry model load qwen2.5-coder-1.5b-instruct-generic-gpu:4
 
 # 2. Quick inference test - verifies the whole stack
-$body = '{"model":"qwen2.5-coder-7b-instruct-openvino-npu:4","messages":[{"role":"user","content":"hi"}],"stream":false,"max_tokens":20}'
+$body = '{"model":"qwen2.5-coder-1.5b-instruct-generic-gpu:4","messages":[{"role":"user","content":"hi"}],"stream":false,"max_tokens":20}'
 (Invoke-RestMethod http://localhost:5273/v1/chat/completions -Method Post -Body $body -ContentType 'application/json').choices[0].message.content
 
 # 3. Runner online
@@ -91,7 +92,7 @@ wsl -d Ubuntu-24.04 -- echo "wsl ok"
 
 ### Physical setup
 
-- Laptop plugged in (Foundry Local on NPU is power-hungry)
+- Laptop plugged in (Foundry Local on the GPU is power-hungry)
 - Windows Focus Assist ON — no Teams pings mid-demo
 - 2 PowerShell windows pre-opened: one for main demo, one for `foundry model load` swaps
 - Browser open to `https://github.com/AndrewMFlick/AutomationDemo/issues`
@@ -106,7 +107,36 @@ wsl -d Ubuntu-24.04 -- echo "wsl ok"
 ### Beat A — Cost story (Foundry Local)
 
 **Duration:** ~60 seconds  
-**What lands:** "Zero tokens spent. Ran on my NPU. Only Microsoft can do this."
+**What lands:** "The Copilot CLI you already know — running on a model on *my box*. Zero tokens. Only Microsoft can do this."
+
+> **Read this once — it explains the model choice (all verified on this box).**
+> The demo runs the **real `copilot` CLI against a local model**, offline. The
+> setup that actually works on a Copilot+ PC with a 2 GB Intel Arc iGPU is
+> specific, because three tempting options are dead ends:
+>
+> | Option | Result | Why |
+> |---|---|---|
+> | `qwen2.5-coder-7b` **NPU** (`…-npu:4`) | ❌ CLI can't load | Every OpenVINO **NPU** build is compiled to a hard **~4,224-token** window (verified: `400 "supports at most 4224 completion tokens"`). Copilot CLI's system prompt + tool schemas exceed that, so it reports `Static context is using 563% of available input tokens`. No env-var fixes it. |
+> | `qwen2.5-coder-7b` **GPU** (4.8 GB) | ❌ gibberish | The 4.8 GB build spills the 2 GB Arc VRAM. |
+> | any **CPU** build | ⚠️ too slow | Coherent but ~45 s per 4 K tokens; the ~18 K harness is minutes/turn. |
+>
+> **The build that works: `qwen2.5-coder-1.5b-instruct-generic-gpu:4`** — a
+> ~1 GB coder model on the **DirectML GPU** runtime. It fits the Arc, stays
+> coherent, and answers in ~40 s. Three rules make it reliable:
+> 1. **`--stream off`** — Foundry Local's stream omits `finish_reason`, which
+>    otherwise makes the CLI retry 5× and duplicate output.
+> 2. **Trim the harness** (`--disable-builtin-mcps --no-custom-instructions
+>    --available-tools=view`) and cap `MAX_PROMPT_TOKENS=7000` — the GPU holds
+>    ~7–8 K prompt tokens before the WebGPU buffer overflows.
+> 3. **Keep the prompt self-contained.** A 1.5 B model is unreliable at
+>    orchestrating tool-calls live, so ask a direct question rather than making
+>    it agentically read a 21 K-token file. (For a file summary, use the
+>    `beat-a-local-summary.ps1` fallback below, which feeds a right-sized
+>    excerpt straight to the endpoint.)
+>
+> Also: before showtime, make sure other models aren't pinned in memory — the
+> demo sets `model-ttl 0`, and a full memory causes `bad allocation` errors and
+> service crashes. `beat-a-local-cli.ps1 -FreeMemory` handles it.
 
 #### On-screen steps
 
@@ -122,28 +152,65 @@ Get-ChildItem env: | Where-Object Name -like 'COPILOT_*'
 Highlight three lines to the audience:
 - `COPILOT_PROVIDER_BASE_URL = http://localhost:5273/v1`
 - `COPILOT_OFFLINE = true`
-- `COPILOT_MODEL = qwen2.5-coder-7b-instruct-openvino-npu:4`
+- `COPILOT_MODEL = qwen2.5-coder-1.5b-instruct-generic-gpu:4`
 
-Then run:
+Then run the Beat A launcher — it loads the local model, sets the offline env,
+and runs the **real Copilot CLI** against it:
 
 ```powershell
-copilot
+.\beat-a-local-cli.ps1
 ```
 
-At the interactive prompt:
+Expected output (abridged):
+
 ```
-> summarize reference/HAP-NodeJS/src/lib/Accessory.ts in 3 bullets
+Beat A - GitHub Copilot CLI on a LOCAL model (offline, $0.00)
+COPILOT_OFFLINE           = true
+COPILOT_PROVIDER_BASE_URL = http://localhost:5273/v1
+COPILOT_MODEL             = qwen2.5-coder-1.5b-instruct-generic-gpu:4
+Prompt: In exactly 3 bullets, explain what a HomeKit Accessory is and why a Rust port benefits from memory safety.
+ - A HomeKit Accessory is a device that connects to Apple HomeKit...
+ - Rust provides memory safety through ownership, borrowing, and lifetimes...
+ - By using Rust, developers write safer code that avoids buffer overflows...
+Answered by qwen2.5-coder-1.5b-instruct-generic-gpu:4 on the local GPU in 46.2s  |  $0.00 - zero tokens billed, fully offline
 ```
 
 #### Talk track
 
-> "I'm running Copilot CLI right now, but look at these environment variables. `COPILOT_OFFLINE=true` means it physically can't call GitHub-hosted models. `COPILOT_PROVIDER_BASE_URL=http://localhost:5273` means every request goes to Foundry Local — a Microsoft runtime — on my NPU. Zero dollars per token. Zero data leaves this machine. And for the ~60% of a port like this that's mechanical grep-and-summarize work, a 7B open-weight model is more than enough. Frontier models are for problems that need frontier reasoning. This isn't one of them."
+> "This is the Copilot CLI — the exact same tool. But look at these environment variables. `COPILOT_OFFLINE=true` means it physically can't call a GitHub-hosted model. `COPILOT_PROVIDER_BASE_URL=http://localhost:5273` means every token is generated by Foundry Local — a Microsoft runtime — on the GPU in *this* laptop. Same CLI, same workflow, but the model is on my box. Zero dollars per token, zero data leaving the machine. For the ~60% of a port like this that's mechanical grep-and-summarize work, a small open-weight coder model on-device is enough. Frontier models are for problems that need frontier reasoning — which is exactly Beat B."
 
-#### If it hangs
+#### If it's slow
 
-Say: "First inference is a warm-up — the NPU is compiling the graph. Normal for a fresh boot. Let's queue Beat B while this catches up."
+Say: "It's grinding entirely on-device — no cloud, no tokens. First call also warms the GPU graph. Let's queue Beat B while it finishes." Move to Beat B and come back.
 
-Move to Beat B. Come back when the response lands.
+#### Optional: summarize a real HAP file locally
+
+To summarize actual reference source on-device (endpoint call, not the agent —
+reliable regardless of model tool-use), run:
+
+```powershell
+.\beat-a-local-summary.ps1                       # summarizes head of Accessory.ts
+.\beat-a-local-summary.ps1 -File reference/HAP-NodeJS/src/lib/util/uuid.ts
+```
+
+#### Option 2 — Copilot App (BYOK)
+
+If you want the same local-model story in the GitHub Copilot App instead of the CLI, this is now possible with BYOK / model providers. Use this only if you have already dry-run the app on the same machine — the app is visually nicer for the model-picker story, but it gives you fewer low-level knobs than the CLI.
+
+1. Open **Copilot App → Settings → Model Providers → Add provider**.
+2. Add an **OpenAI-compatible** provider with endpoint `http://localhost:5273/v1`.
+3. Leave the API key blank for local Foundry.
+4. Start a session and pick `qwen2.5-coder-1.5b-instruct-generic-gpu:4` from the model picker.
+
+Talk track:
+
+> "This is the same local model story, just in the Copilot App. The model picker now shows both Copilot-hosted models and my local Foundry model side by side. I can route mechanical work to the on-device model for zero token cost, then switch to frontier models when I need them."
+
+#### Copilot App caveats
+
+- Verify the app can hold the same prompt size on your hardware; the CLI-specific trimming and `--stream off` fix do not apply here.
+- Keep the GPU build, not the NPU build. The NPU's ~4,224-token window is still too small for the full agent harness.
+- If the app misbehaves on stage, fall back to `.\\beat-a-local-cli.ps1`, which is already proven on this box.
 
 ---
 
@@ -184,7 +251,7 @@ Show the `.github/copilot-instructions.md` file briefly:
 - `model:foundry-local` -> Runs on Foundry Local. Mechanical work.
 - `model:codex`   -> TLV8 and well-patterned wire code.
 - `model:opus`    -> SRP, ChaCha20-Poly1305, X25519/Ed25519. Byte-exact.
-- `model:fine-tuned` -> Adversarial spec review, air-gapped, Foundry Local.
+- `model:fine-tuned` -> Local security-hardening review, grounded on the Apache-2.0 reference, air-gapped on Foundry Local.
 ```
 
 > "Repo-level instructions telling Copilot what to route where. This is the routing policy in code."
@@ -194,11 +261,15 @@ Show the `.github/copilot-instructions.md` file briefly:
 ### Beat C — Security story (air-gapped review)
 
 **Duration:** ~90 seconds  
-**What lands:** "The HAP spec never left this machine. And CI enforced it."
+**What lands:** "The reference and the code never left this machine. And CI enforced it."
 
 #### On-screen steps
 
 Open the PR that Copilot opened for the SRP work in Beat B (or a pre-baked one you prepared).
+
+> **Dry-run tip.** Before the demo you can run the exact same scan locally:
+> `pwsh .\security-review-local.ps1 -AllSecurity` (or `-Files crates/hap-crypto/src/lib.rs`).
+> CI calls this same script on the self-hosted runner.
 
 Add the `security-review-required` label:
 
@@ -206,23 +277,28 @@ Add the `security-review-required` label:
 gh pr edit <pr-number> --add-label security-review-required
 ```
 
-Switch to the Actions tab. Show the `local-review-attestation` job starting on your **self-hosted runner** (labeled `foundry-local`).
+Switch to the Actions tab. Show the `local-review-attestation` job starting on your **self-hosted runner** (labeled `foundry-local`). It runs `security-review-local.ps1`, which scans the PR's security-critical Rust against the **Apache-2.0 HAP-NodeJS reference** on this box and gates on High findings.
 
-Highlight two log lines from the CI job:
+Highlight the CI job log:
 
 ```
-Verify offline mode + local reviewer model
-  COPILOT_OFFLINE=true  ✓
-  hap-spec-reviewer-v1 available on http://localhost:5273/v1  ✓
+Verify local reviewer model is loaded
+  qwen2.5-coder-1.5b-instruct-generic-gpu:4 available  ✓
 
-Adversarial review
-  HAP §5.6.6.1: SRP salt must be 16 bytes.  Implementation: ✓
-  HAP §5.6.6.2: SRP-6a proof M1 = H(...).   Implementation: ✓
+Internal security hardening scan (local, on-device)
+  Grounding: HAP-NodeJS reference (Apache-2.0), read locally
+  Reviewing crates/hap-crypto/src/pairing.rs
+    grounded on: src/lib/util/hapCrypto.ts
+    [HIGH] pairing.rs: fixed nonce reused across frames (fix: derive a per-frame nonce)
+    [HIGH] pairing.rs: unwrap() on decrypt can panic on hostile input (fix: return HapError)
+    (24.1s, on-device, $0.00, 2 finding(s))
+  VERDICT: FAIL
+  GATE FAILED: findings at or above 'High'.
 ```
 
 #### Talk track
 
-> "Apple's HAP specification is under a Non-Commercial license. You legally can't send big chunks of it to a third-party inference endpoint. So the adversarial spec reviewer runs on Foundry Local — on my machine — with `COPILOT_OFFLINE=true`. And CI enforces that. This job is running on a **self-hosted runner** that I registered with the `foundry-local` label. It literally cannot execute on GitHub-hosted infrastructure. The Apple spec never left my box. The code never left my box. And the review still gated the merge. **No other AI dev platform can offer this shape today.** Not Cursor. Not Claude Code. Not Codex CLI standalone. Because the local runtime piece — Foundry Local — is a Microsoft asset that ships with Windows."
+> "Here's the security story. Apple's HAP spec is Non-Commercial licensed — you legally can't ship it to a third-party inference endpoint. So instead of pretending I trained a model on Apple's spec, I ground the review in the **Apache-2.0 reference implementation** — the canonical, openly-licensed encoding of the required behavior. The reviewer is a small open-weight model running on Foundry Local, on *this* machine. This job runs on a **self-hosted runner** labeled `foundry-local` — it literally cannot execute on GitHub-hosted infrastructure. The reference never leaves my box, the code never leaves my box, and the scan still gated the merge on a real crypto bug — a reused nonce. **No other AI dev platform offers this shape today.** Not Cursor. Not Claude Code. Not Codex CLI standalone. Because the local runtime — Foundry Local — is a Microsoft asset that ships with Windows."
 
 #### The regulated-customer transition
 
@@ -282,9 +358,9 @@ Play video. Land the same closing line.
 
 Three bullets for the recap email / stakeholder debrief:
 
-1. **Cost:** 60%+ of PRs on this port were driven by a 7B open-weight model running on-device via Foundry Local — zero token cost, no external inference — reserving frontier-model spend for the ~30% of work (crypto + review) that actually needs it.
+1. **Cost:** 60%+ of PRs on this port were driven by an open-weight coder model running on-device via Foundry Local — zero token cost, no external inference — reserving frontier-model spend for the ~30% of work (crypto + review) that actually needs it.
 
-2. **Security:** The adversarial HAP spec reviewer is a fine-tuned open-weight model, running fully air-gapped via Foundry Local + `COPILOT_OFFLINE=true`. Apple's spec and our source never left the developer's Copilot+ PC — and CI enforces it as a merge gate.
+2. **Security:** The security-hardening reviewer is an open-weight model running fully air-gapped via Foundry Local on a self-hosted runner, grounded in the Apache-2.0 HAP-NodeJS reference (not Apple's Non-Commercial spec). The reference and our source never left the developer's box — and CI enforces it as a merge gate.
 
 3. **Only Microsoft:** GitHub Issues → Copilot coding agent → BYOM model routing → Foundry Local on Windows/WSL → runtime on the same box. Cursor can't do it. Codex CLI can't do it. GitHub + Foundry Local can.
 
@@ -306,7 +382,7 @@ Three bullets for the recap email / stakeholder debrief:
 
 ### "Can I run this without a Copilot+ PC?"
 
-> "Yes — Foundry Local auto-picks the best variant for your hardware. NPU on Copilot+ PC, discrete GPU on gaming laptops, CPU everywhere else. CPU is slower but functional. The story doesn't change."
+> "Yes — and you don't need a Copilot+ PC at all. Foundry Local auto-picks the best variant for your hardware: discrete or integrated GPU where available, CPU everywhere else. One caveat learned building this demo: the **NPU** builds are capped at a ~4K-token window, too small to host the Copilot CLI harness — so for *driving the CLI* you want the **GPU** (or CPU) build. The NPU is still great for direct endpoint inference. Either way the cost story doesn't change: it runs on-device for zero token cost."
 
 ### "How is this different from Ollama?"
 
@@ -339,29 +415,60 @@ foundry service status
 ### Model not loaded
 
 ```powershell
-foundry model load qwen2.5-coder-7b
+foundry model load qwen2.5-coder-1.5b-instruct-generic-gpu:4
 (Invoke-RestMethod http://localhost:5273/v1/models).data | Select-Object id
 ```
 
-### Copilot returns 400
+### Beat A: Copilot CLI can't load / "563% of available input tokens"
 
-Almost always the model ID or token limits. Full ID with variant suffix required:
+You are pointed at an **NPU** model. Every OpenVINO NPU build is capped at
+**~4,224 tokens** — too small for the CLI harness. Switch to the **GPU** build:
 
 ```powershell
-$env:COPILOT_MODEL = 'qwen2.5-coder-7b-instruct-openvino-npu:4'
-$env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS = '3200'
-$env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS = '500'
-copilot --model "qwen2.5-coder-7b-instruct-openvino-npu:4"
+$env:COPILOT_MODEL = 'qwen2.5-coder-1.5b-instruct-generic-gpu:4'
+foundry model load qwen2.5-coder-1.5b-instruct-generic-gpu:4
+```
+
+Then run `.\beat-a-local-cli.ps1`. If it still overflows, the harness is too big
+for the 2 GB GPU window — lower the budget: `$env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS='6000'`.
+
+### Beat A: output is duplicated / "missing finish_reason"
+
+Foundry Local's streaming omits `finish_reason`. Always pass **`--stream off`**
+(the launcher script already does).
+
+### Beat A: "bad allocation" 500 or the service crashes
+
+Memory pressure — other models are pinned in RAM (`model-ttl 0`). Free them:
+
+```powershell
+.\beat-a-local-cli.ps1 -FreeMemory     # unloads other resident models first
+```
+
+### Beat A: model emits raw tool-call JSON / gibberish
+
+The 1.5B model is unreliable at agentic tool-use. Keep the prompt **self-contained**
+(the launcher does). For an actual file summary, use the endpoint fallback:
+
+```powershell
+.\beat-a-local-summary.ps1 -File reference/HAP-NodeJS/src/lib/util/uuid.ts
+```
+
+Sanity-check the model directly (should return a short summary in a few seconds):
+
+```powershell
+$body = '{"model":"qwen2.5-coder-1.5b-instruct-generic-gpu:4","messages":[{"role":"user","content":"Summarize what a HomeKit accessory is in 2 bullets."}],"stream":false,"max_tokens":80}'
+(Invoke-RestMethod http://localhost:5273/v1/chat/completions -Method Post -Body $body -ContentType 'application/json').choices[0].message.content
 ```
 
 ### Copilot returns "transient API error, retrying"
 
-Wait 60 seconds. First inference is NPU warmup. If it never lands:
+Wait 60 seconds. First inference warms the GPU graph. If it never lands:
 
 ```powershell
-foundry service status                        # is service alive?
-foundry model load qwen2.5-coder-7b           # is model loaded?
-setx COPILOT_PROVIDER_TIMEOUT_MS "120000"     # bump the timeout
+foundry service status                                        # is service alive?
+foundry model load qwen2.5-coder-1.5b-instruct-generic-gpu:4  # is model loaded?
+setx COPILOT_PROVIDER_TIMEOUT_MS "120000"                     # bump the timeout
 ```
 
 ### Runner offline
@@ -414,14 +521,15 @@ Get-ChildItem *.ps1 | Unblock-File
 ### Environment variables (persistent, user scope)
 
 Use `setx` — it's the most portable way to set persistent env vars from PowerShell.
+For a quick toggle in the current shell, dot-source `.\switch-copilot-provider.ps1 -Mode Local` or `-Mode Cloud`.
 
 ```powershell
 setx COPILOT_PROVIDER_BASE_URL          "http://localhost:5273/v1"
 setx COPILOT_PROVIDER_TYPE              "openai"
-setx COPILOT_MODEL                      "qwen2.5-coder-7b-instruct-openvino-npu:4"
+setx COPILOT_MODEL                      "qwen2.5-coder-1.5b-instruct-generic-gpu:4"
 setx COPILOT_OFFLINE                    "true"
-setx COPILOT_PROVIDER_MAX_PROMPT_TOKENS "3200"
-setx COPILOT_PROVIDER_MAX_OUTPUT_TOKENS "500"
+setx COPILOT_PROVIDER_MAX_PROMPT_TOKENS "7000"
+setx COPILOT_PROVIDER_MAX_OUTPUT_TOKENS "400"
 setx COPILOT_PROVIDER_TIMEOUT_MS        "120000"
 ```
 
@@ -430,18 +538,24 @@ Open a new PowerShell after setting these. To load into the current session with
 ```powershell
 $env:COPILOT_PROVIDER_BASE_URL          = "http://localhost:5273/v1"
 $env:COPILOT_PROVIDER_TYPE              = "openai"
-$env:COPILOT_MODEL                      = "qwen2.5-coder-7b-instruct-openvino-npu:4"
+$env:COPILOT_MODEL                      = "qwen2.5-coder-1.5b-instruct-generic-gpu:4"
 $env:COPILOT_OFFLINE                    = "true"
-$env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS = "3200"
-$env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS = "500"
+$env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS = "7000"
+$env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS = "400"
 $env:COPILOT_PROVIDER_TIMEOUT_MS        = "120000"
 ```
+
+> **Note on the model choice.** `…-generic-gpu:4` is the DirectML GPU build —
+> the one that actually runs the Copilot CLI harness on a 2 GB Arc iGPU. Do
+> **not** use `…-openvino-npu:4` (4,224-token cap — CLI won't load) or the 7B
+> GPU build (spills VRAM → gibberish). Always launch the CLI with `--stream off`.
 
 ### Foundry Local persistent settings
 
 ```powershell
+foundry model download qwen2.5-coder-1.5b-instruct-generic-gpu:4  # pull the DirectML GPU build (~1 GB)
 foundry service set --port 5273              # pin port so env vars don't drift
-foundry service set --autoload qwen2.5-coder-7b  # load on service start
+foundry service set --autoload qwen2.5-coder-1.5b-instruct-generic-gpu:4  # load on service start
 foundry service set --model-ttl 0            # never auto-unload
 ```
 
@@ -466,11 +580,11 @@ foundry service set --model-ttl 0            # never auto-unload
 
 | Task | Model | Where it runs | Cost |
 |---|---|---|---|
-| Exploration, summarization | qwen2.5-coder-7b | Foundry Local (NPU) | $0 |
-| Boilerplate Rust translation | qwen2.5-coder-7b | Foundry Local (NPU) | $0 |
+| Exploration, summarization | qwen2.5-coder-1.5b (GPU) | Foundry Local (GPU) | $0 |
+| Boilerplate Rust translation | qwen2.5-coder-1.5b (GPU) | Foundry Local (GPU) | $0 |
 | TLV8 wire encoding | Codex | GitHub-hosted | ~$0.05/PR |
 | SRP + ChaCha20-Poly1305 crypto | Opus 4.8 | GitHub-hosted | ~$0.30/PR |
-| Adversarial HAP spec review | hap-spec-reviewer-v1 (fine-tuned) | Foundry Local (offline) | $0 |
+| Local security hardening review | qwen2.5-coder-1.5b (GPU) | Foundry Local (offline) | $0 |
 
 ---
 
