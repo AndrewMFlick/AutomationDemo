@@ -11,8 +11,9 @@
         . .\switch-copilot-provider.ps1 -Mode Local
         . .\switch-copilot-provider.ps1 -Mode Cloud
 
-    Local mode points Copilot CLI at Foundry Local. Cloud mode removes the local
-    provider overrides so Copilot uses its default hosted provider again.
+    Local mode points Copilot CLI at Foundry Local and forces offline mode.
+    Cloud mode removes the local provider overrides and forces online mode so
+    Copilot uses its default hosted provider again.
 
 .EXAMPLE
     . .\switch-copilot-provider.ps1 -Mode Local
@@ -67,12 +68,12 @@ switch ($Mode) {
         Set-EnvValue COPILOT_PROVIDER_BASE_URL $LocalBaseUrl
         Set-EnvValue COPILOT_PROVIDER_TYPE 'openai'
         Set-EnvValue COPILOT_MODEL $LocalModel
-        Set-EnvValue COPILOT_OFFLINE $null
+        Set-EnvValue COPILOT_OFFLINE 'true'
         Set-EnvValue COPILOT_PROVIDER_MAX_PROMPT_TOKENS '7000'
         Set-EnvValue COPILOT_PROVIDER_MAX_OUTPUT_TOKENS '400'
         Set-EnvValue COPILOT_PROVIDER_TIMEOUT_MS '120000'
 
-        Write-Host "Switched current session to the local Foundry provider." -ForegroundColor Cyan
+        Write-Host "Switched current session to the local Foundry provider (offline)." -ForegroundColor Cyan
         Show-CurrentProvider
         Write-Host "IMPORTANT: the env vars point the PROVIDER at Foundry Local, but the" -ForegroundColor Yellow
         Write-Host "interactive picker still defaults to a hosted model. You MUST launch" -ForegroundColor Yellow
@@ -89,12 +90,12 @@ switch ($Mode) {
         Set-EnvValue COPILOT_PROVIDER_BASE_URL $null
         Set-EnvValue COPILOT_PROVIDER_TYPE $null
         Set-EnvValue COPILOT_MODEL $CloudModel
-        Set-EnvValue COPILOT_OFFLINE $null
+        Set-EnvValue COPILOT_OFFLINE 'false'
         Set-EnvValue COPILOT_PROVIDER_MAX_PROMPT_TOKENS $null
         Set-EnvValue COPILOT_PROVIDER_MAX_OUTPUT_TOKENS $null
         Set-EnvValue COPILOT_PROVIDER_TIMEOUT_MS $null
 
-        Write-Host "Switched current session back to the default cloud provider." -ForegroundColor Cyan
+        Write-Host "Switched current session back to the default cloud provider (online)." -ForegroundColor Cyan
         Show-CurrentProvider
         if ($CloudModel) {
             Write-Host "If needed, pass --model $CloudModel when you launch copilot." -ForegroundColor Yellow

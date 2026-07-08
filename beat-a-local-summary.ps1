@@ -39,7 +39,14 @@ $ErrorActionPreference = 'Stop'
 
 function Write-Rule { Write-Host ("-" * 60) -ForegroundColor DarkGray }
 
-# 1. Prove offline mode on screen (the three lines the talk track highlights).
+# 1. Point the current shell at Foundry Local and force offline mode so the
+#    on-screen proof lines are true for this run.
+$env:COPILOT_PROVIDER_BASE_URL = $BaseUrl
+$env:COPILOT_PROVIDER_TYPE = "openai"
+$env:COPILOT_MODEL = $Model
+$env:COPILOT_OFFLINE = "true"
+
+# 2. Prove offline mode on screen (the three lines the talk track highlights).
 Write-Rule
 Write-Host "Beat A - local inference on the NPU (offline, zero token cost)" -ForegroundColor Cyan
 Write-Rule
@@ -48,7 +55,7 @@ Write-Host "COPILOT_PROVIDER_BASE_URL  = $([Environment]::GetEnvironmentVariable
 Write-Host "COPILOT_MODEL              = $([Environment]::GetEnvironmentVariable('COPILOT_MODEL'))"
 Write-Rule
 
-# 2. Read a right-sized excerpt of the target file.
+# 3. Read a right-sized excerpt of the target file.
 if (-not (Test-Path $File)) {
     throw "File not found: $File (run from the repo root that contains reference/HAP-NodeJS)"
 }
@@ -62,7 +69,7 @@ Write-Host ("  excerpt: {0} chars (~{1} tokens){2}" -f $excerpt.Length, $approxT
 Write-Host ("  model:   {0} on NPU via Foundry Local" -f $Model)
 Write-Host ""
 
-# 3. Call the local NPU endpoint directly (OpenAI-compatible).
+# 4. Call the local NPU endpoint directly (OpenAI-compatible).
 $system = "You are a senior engineer. Summarize the given TypeScript source in exactly 3 concise bullets describing what the file does. No preamble."
 $body = @{
     model    = $Model
@@ -91,7 +98,7 @@ try {
 }
 $sw.Stop()
 
-# 4. Show the result and the cost/perf story.
+# 5. Show the result and the cost/perf story.
 Write-Rule
 Write-Host $resp.choices[0].message.content
 Write-Rule
