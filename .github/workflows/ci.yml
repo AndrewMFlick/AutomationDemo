@@ -1,12 +1,15 @@
 ﻿name: CI
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
 jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { components: rustfmt, clippy }
+        with: { components: "rustfmt, clippy" }
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo install cargo-nextest --locked
@@ -17,15 +20,28 @@ jobs:
   local-review-attestation:
     if: contains(github.event.pull_request.labels.*.name, 'security-review-required')
     runs-on: [self-hosted, foundry-local]
+    env:
+      LOCAL_BASE_URL: http://localhost:5273/v1
+      LOCAL_MODEL:    qwen2.5-coder-1.5b-instruct-generic-gpu:4
+      # Apache-2.0 reference clone on THIS runner. It is gitignored (never
+      # committed / never leaves the box); the scan reads it locally.
+      HAP_REFERENCE_ROOT: C:\Users\anflick\OneDrive - Microsoft\Documents\GitHub\AutomationDemo\reference\HAP-NodeJS
     steps:
       - uses: actions/checkout@v4
-      - name: Verify offline mode + local reviewer model
+      - name: Verify local reviewer model is loaded
+        shell: pwsh
         run: |
-          test "$COPILOT_OFFLINE" = "true" || { echo "Offline mode required"; exit 1; }
-          curl -sf http://localhost:5273/v1/models | jq -e '.data[] | select(.id=="hap-spec-reviewer-v1")'
-      - name: Adversarial review
-        env:
-          COPILOT_PROVIDER_BASE_URL: http://localhost:5273/v1
-          COPILOT_MODEL:            hap-spec-reviewer-v1
-          COPILOT_OFFLINE:          "true"
-        run: copilot review --pr ${{ github.event.pull_request.number }}
+          $ids = (Invoke-RestMethod "$env:LOCAL_BASE_URL/models" -TimeoutSec 15).data.id
+          if ($ids -notcontains $env:LOCAL_MODEL) {
+            Write-Error "Local model $env:LOCAL_MODEL is not available on Foundry Local"
+            exit 1
+          }
+          Write-Host "Local reviewer model available: $env:LOCAL_MODEL"
+      - name: Internal security hardening scan (local, on-device)
+        shell: pwsh
+        run: |
+          ./security-review-local.ps1 `
+            -BaseRef "origin/${{ github.event.pull_request.base.ref }}" `
+            -Model   $env:LOCAL_MODEL `
+            -BaseUrl $env:LOCAL_BASE_URL `
+            -FailOn  High

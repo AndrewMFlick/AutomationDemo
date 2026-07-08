@@ -11,7 +11,7 @@
 - `model:codex`   -> TLV8 and well-patterned wire code.
 - `model:deepseek`-> Boilerplate struct/enum translation.
 - `model:opus`    -> SRP, ChaCha20-Poly1305, X25519/Ed25519. Byte-exact.
-- `model:fine-tuned` -> Adversarial spec review, air-gapped, Foundry Local.
+- `model:fine-tuned` -> Local security-hardening review, grounded on the Apache-2.0 reference, air-gapped on Foundry Local.
 
 ## Rust rules
 - Edition 2021, MSRV 1.75.

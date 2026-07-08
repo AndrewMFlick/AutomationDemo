@@ -1,5 +1,5 @@
-﻿name: Adversarial Spec Review [Foundry Local]
-description: Fine-tuned reviewer, air-gapped
+﻿name: Local Security Hardening Review [Foundry Local]
+description: On-device reviewer, air-gapped, grounded on the Apache-2.0 reference
 labels: [area:model, model:fine-tuned, compliance, security-review-required]
 body:
   - type: input
@@ -10,7 +10,9 @@ body:
     id: instructions
     attributes:
       value: |
-        Enforce every MUST/SHALL from the referenced HAP spec section.
-        MODEL: hap-spec-reviewer-v1 on Foundry Local.
-        RUNTIME: COPILOT_OFFLINE=true, self-hosted runner.
-        HAP spec MUST NOT leave the developer machine.
+        Scan the PR's security-critical Rust for hardening issues (memory safety,
+        panics, crypto misuse, input validation), grounded in the canonical
+        HAP-NodeJS reference implementation.
+        MODEL: qwen2.5-coder-1.5b-instruct-generic-gpu:4 on Foundry Local.
+        GROUNDING: Apache-2.0 HAP-NodeJS reference (NOT Apple's Non-Commercial spec).
+        RUNTIME: self-hosted runner, offline. Reference and code MUST NOT leave the box.
